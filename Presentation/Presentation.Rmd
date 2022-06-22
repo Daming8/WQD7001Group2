@@ -1,0 +1,27 @@
+---
+output:
+  xaringan::moon_reader:
+    css: [default, zh-CN.css]
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+---
+
+background-image: url(https://raw.githubusercontent.com/Daming8/R/main/1.PNG)
+
+```{r setup, include=FALSE}
+options(htmltools.dir.version = FALSE)
+```
+---
+background-image: url(https://raw.githubusercontent.com/Daming8/R/main/2.PNG)
+---
+background-image: url(https://raw.githubusercontent.com/Daming8/R/main/3.PNG)
+---
+background-image: url(https://raw.githubusercontent.com/Daming8/R/main/4.PNG)
+---
+background-image: url(https://raw.githubusercontent.com/Daming8/R/main/5.PNG)
+---
+background-image: url(https://raw.githubusercontent.com/Daming8/R/main/6.PNG)
+
