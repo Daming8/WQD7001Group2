@@ -1,0 +1,468 @@
+title: "WQD 7001 Group Project:Road Safety Analysis"
+author: "
+WQD7001 Group 2 Road Ranger: 
+S2136912 CHIN CHEE TENG, 
+S2141978	Daming Zhu, 
+S2128176	Jinxing Li, 
+S2131391	Lingyu Meng,
+S2136367	Hong Chuan Lim"
+date: '2022-06-18'
+output: html_document
+<br>
+**Research questions 1: What time of the day had the most major accidents happen?**
+<br>
+**Research questions 2: What day of the week had the most major accidents happen?**
+<br>
+**Research questions 3: What characteristics different in major incidents compared with other accidents?**
+<br>
+Import library
+```{r}
+library("tidyverse")   #Package for plotting and data wrangling
+library("summarytools")  #package for summary statistics
+library("lubridate")   # Package for date & time
+library("corrplot")   # For plotting correlation matrix
+library("tidyr")
+library("ggplot2")
+library('purrr')
+library('printr')
+library('pROC') 
+library('ROCR') 
+library('caret')
+library('car')
+library('rpart')
+library('rpart.plot')
+```
+Import dataset
+```{r}
+#data <- read.csv("https://raw.githubusercontent.com/Daming8/-kaggle/main/accident-data.csv")
+data <- read.csv("accident-data.csv")
+head(data,5)
+```
+#Descriptive Statistic 
+<br>
+By taking a glimpse on our dataset, we have total of 91,199 observations and 27 columns. Three non-useful variables are identified: **accident_index**, **accident_year**, and **accident_reference **. Two variables: **Date** and **Time** need to be encoded into numbers because machine learning models can only work with numerical input.
+```{r}
+str(data)
+```
+Drop non-useful variables
+```{r}
+data = data[, !names(data) %in% c('accident_index', 'accident_year','accident_reference')]
+```
+To convert **Date** and **Time** from character type to numeric. 
+```{r}
+data$date <- as.Date(data$date,format="%d/%m/%Y") 
+data$date <- month(data$date)
+
+data$time <- strptime(data$time, format ="%H")
+data$time <- hour(data$time)
+```
+#Data Preprocessing
+To remove NA & Missing Data 
+```{r}
+head(data,5)
+summary(data)
+```
+
+#Checking for missing values
+```{r}
+colSums(is.na(data))
+```
+For longitude & latitude variables contain 14 missing values.
+```{r}
+data <- na.omit(data)
+any(is.na(data))
+```
+From summary, below are the variables which min=-1
+-1 = unknown/missing data which given in the dataset remarks
+**speed_limit**
+**junction_detail**
+**junction_control**
+**second_road_number**
+**pedestrian_crossing_human_control**
+**pedestrian_crossing_physical_facilities**
+**light_conditions**
+**weather_conditions**
+**road_surface_conditions**
+**special_conditions_at_site**
+**carriageway_hazards**
+
+```{r}
+sum(data$speed_limit==-1)
+sum(data$junction_detail==-1)
+sum(data$junction_control==-1)
+sum(data$second_road_number==-1)
+sum(data$pedestrian_crossing_human_control==-1)
+sum(data$pedestrian_crossing_physical_facilities==-1)
+sum(data$light_conditions==-1)
+sum(data$weather_conditions==-1) 
+sum(data$road_surface_conditions==-1)
+sum(data$special_conditions_at_site==-1)
+sum(data$carriageway_hazards==-1)
+```
+For **junction_control** column,-1 accounts for 40%,so delete this coulumn.
+```{r}
+data <- select(data,-junction_control)
+```
+For variable that contain unknown/missing values are removed. Total: 1042 values are deleted from variables as follow:
+**speed_limit**
+**junction_detail**
+**second_road_number**
+**pedestrian_crossing_human_control**
+**pedestrian_crossing_physical_facilities**
+**light_conditions**
+**weather_conditions**
+**road_surface_conditions**
+**special_conditions_at_site**
+**carriageway_hazards**
+
+```{r}
+data <- filter(data,speed_limit>=0)
+data <- filter(data,junction_detail>=0)
+data <- filter(data,second_road_number>=0)
+data <- filter(data,pedestrian_crossing_human_control>=0)
+data <- filter(data,pedestrian_crossing_physical_facilities>=0)
+data <- filter(data,light_conditions>=0)
+data <- filter(data,weather_conditions>=0) 
+data <- filter(data,road_surface_conditions>=0)
+data <- filter(data,special_conditions_at_site>=0)
+data <- filter(data,carriageway_hazards>=0)
+```
+
+The dataset left total of 90,706 observations and 23 columns.
+```{r}
+str(data)
+```
+<br>
+Plot number of accident against **date** <br>
+The mode is 1 which refers to January
+```{r}
+counts1 <- table(data$accident_severity, data$date)
+
+barplot(counts1, xlab = "Month",
+       col = rainbow(3),
+       legend.text = rownames(counts1),
+       args.legend = list(x = "right"))
+``` 
+<br>
+Plot number of accident against  **day_of_week** <br>
+Remarks: Sunday denotes as 1. <br>
+The mode is 6 which refers to Friday
+```{r}
+counts2 <- table(data$accident_severity, data$day_of_week)
+
+barplot(counts2, xlab = "Day of Week",
+       col = rainbow(3),
+       legend.text = rownames(counts2),
+       args.legend = list(x = "right"))
+``` 
+The mode is at 17:00 in a day. *Accident_severity* denotes as 1,2,3 as fatal, serious, slight, respectively
+Plot number of accident against  **time** <br>
+The mode is at 17:00 in a day. **Accident_severity** denotes as 1,2,3 as slight, serious, fatal respectively
+```{r}
+counts3 <- table(data$accident_severity, data$time)
+
+barplot(counts3, xlab = "Time",
+       col = rainbow(3),
+       legend.text = rownames(counts3),
+       args.legend = list(x = "topright"))
+```
+<br>
+Plot number of accident against **road_type** <br>
+The mode is 6 denotes as Single carriageway<br>
+Remarks: 
+1	Roundabout
+2	One way street
+3	Dual carriageway
+6	Single carriageway
+7	Slip road
+9	Unknown
+
+```{r}
+counts4 <- table(data$accident_severity, data$road_type)
+
+barplot(counts4, xlab = "Road Type",
+       col = rainbow(3),
+       legend.text = rownames(counts4),
+       args.legend = list(x = "right"))
+``` 
+<br>
+Plot number of accident against **speed_limit** <br>
+The mode is 30 mph.
+```{r}
+counts5 <- table(data$accident_severity, data$speed_limit)
+
+barplot(counts5, xlab = "Speed Limit",
+       col = rainbow(3),
+       legend.text = rownames(counts5),
+       args.legend = list(x = "right"))
+
+``` 
+<br>
+Plot number of accident against **light_conditions** <br>
+The mode is 1 denotes as daylight<br>
+Remarks: 
+1	Daylight
+4	Darkness - lights lit
+5	Darkness - lights unlit
+6	Darkness - no lighting
+7	Darkness - lighting unknown
+
+```{r}
+counts6 <- table(data$accident_severity, data$light_conditions)
+
+barplot(counts6, xlab = "Light Conditions",
+       col = rainbow(3),
+       legend.text = rownames(counts6),
+       args.legend = list(x = "right"))
+``` 
+<
+<br>
+Plot number of accident against **road_surface_conditions** <br>
+The mode is 1 denotes as dry<br>
+Remarks:
+1	Dry
+2	Wet or damp
+3	Snow
+4	Frost or ice
+5	Flood over 3cm. deep
+6	Oil or diesel
+7	Mud
+9	unknown (self reported)
+
+```{r}
+counts7 <- table(data$accident_severity, data$road_surface_conditions)
+
+barplot(counts7, xlab = "Road Surface Conditions",
+       col = rainbow(3),
+       legend.text = rownames(counts7),
+       args.legend = list(x = "right"))
+``` 
+<br>
+Plot number of accident against **urban_or_rural_area** <br>
+The mode is 1 denotes as urban<br>
+Remarks:
+1	Urban
+2	Rural
+```{r}
+counts8 <- table(data$accident_severity, data$urban_or_rural_area)
+
+barplot(counts8, xlab = "Urban or Rural area",
+       col = rainbow(3),
+       legend.text = rownames(counts8),
+       args.legend = list(x = "topright"))
+``` 
+<br>
+Plot number of accident against **number of vehicles involved** <br>
+```{r}
+counts9 <- table(data$accident_severity, data$number_of_vehicles)
+
+barplot(counts9, xlab = "Number of vehicles involved",
+       col = rainbow(3),
+       legend.text = rownames(counts9),
+       args.legend = list(x = "topright"))
+```
+<br>
+Plot number of accident against **Number of casualties** <br>
+```{r}
+counts10 <- table(data$accident_severity, data$number_of_casualties)
+
+barplot(counts10, xlab = "Number of casualties",
+       col = rainbow(3),
+       legend.text = rownames(counts10),
+       args.legend = list(x = "topright"))
+```
+<br>
+Scatterplot between accident_severity and number of casualities
+<br>
+```{r}
+counts11 <- table(data$accident_severity, data$number_of_casualties)
+
+plot(data$accident_severity, data$number_of_casualties,
+   xlab="accident_severity", ylab="number_of_casualties",
+   main="")
+```
+<br>
+Scatter plot map of accident longtitude & latitude in UK
+<br>
+```{r}
+library(maps)
+UK <- map_data("world") %>% filter(region=="UK")
+
+ggplot() +
+  geom_polygon(data = UK, aes(x=long, y = lat, group = group), fill="blue", alpha=0.3) +
+  geom_point( data=data, aes(x=longitude, y=latitude)) +
+  theme_void() + ylim(50,59) + coord_map() 
+```
+
+<br>
+Correlation Plot
+<br>
+```{r}
+data_cor <- cor(data)
+corrplot(data_cor,method = 'color',tl.cex = 0.6)
+```
+
+## Machine Learning - Classification
+To train a classification model, there is mainly three steps:<br>
+1. Splitting Data into Training and Testing Set<br>
+2. Model Training/ Tuning <br>
+3. Model Testing<br>
+
+The **Accident Severity** variable will be used as the target variable to predict whether an accident is fatal or not.
+
+## Data Processing
+The data processing that need to be done include: <br>
+1) Change accident severity from fatal(1), serious(2), slight(3) to Fatal(1) and non-Fatal(0)
+
+```{r}
+#
+df <- data
+df$accident_severity[df["accident_severity"]==2] <- 0
+df$accident_severity[df["accident_severity"]==3] <- 0
+unique(df$accident_severity)
+prop.table(table(df$accident_severity))
+```
+
+
+**Splitting Data into training set and testing set**
+```{r}
+set.seed(1000)
+trainIndex <- createDataPartition(df$accident_severity, p = 0.8, list = FALSE, times = 1)
+training_data <- df[ trainIndex,]
+testing_data  <- df[-trainIndex,]
+```
+Data From Traing Set and Testing Set
+```{r}
+# Check if the splitting process is correct
+prop.table(table(training_data$accident_severity))
+prop.table(table(testing_data$accident_severity))
+```
+
+**Model Training**<br>
+**1. Logistic Regression**: <br>
+Logistic regression is a statistical analysis method to predict a binary outcome, such as yes or no, based on prior observations of a data set.<br>
+We will first fit all the features into the logistic regression to identify which are the important feature that contribute to the result.
+```{r}
+LR_model = glm(accident_severity ~ ., data = training_data, family = "binomial")
+summary(LR_model)
+```
+From the summary above, we can drop feature of **day_of_week**, **first_road_number**,**second_road_number**,**carriageway_hazards** from the training model, thus they're not statistical significance to the target column (p-value > 0.05)
+```{r}
+LR_model = glm(accident_severity ~ .-date-special_conditions_at_site-day_of_week -first_road_number - second_road_number - carriageway_hazards , data = training_data, family = "binomial")
+summary(LR_model)
+```
+After dropping those features, we can notice that the statistical significance of other variables have significantly increase. Apart from that, the deviance residuals has also move closer to 0 and AIC reduces as well.<br>
+
+Apart from checking the p-value, we can also check on the VIF of features. Variance inflation factor (VIF) provides a measure of multicollinearity among the independent variables in a multiple regression model. Multicollinearity exist when two/ more predictor are highly relative to each other and it will become difficult to understand the impact of an independent variable. <br>
+
+One of the assumptions fron logistic regression is the feature should be independent.A predictor having a **VIF of 2 or less** is generally considered safe and it can be assumed that it is not correlated with other predictor variables. Higher the VIF, greater is the correlation of the predictor variable with other predictor variables. 
+
+From the result below, all the feature selected is good to use for training the model.
+```{r}
+vif(LR_model)
+```
+Only urban_or_rural_area is having a VIF of more than 2. But it is ok to keep it as we are aware that there are way less accidents happening in the rural area compared to urban area. 
+**Logistic Regression Result**<br>
+The model has achieved **97%** of accuracy, **12%** of sensitivity and **98.6%** of specificity. The Area Under Curve for this model achieves **77%** which is considered a good result.
+```{r}
+# Performance of model on testing data set
+pred <- predict(LR_model,testing_data,type="response")
+cutoff_val <- ifelse(pred>0.071, 1,0)
+cm <- confusionMatrix(as.factor(testing_data$accident_severity),as.factor(cutoff_val),positive ='1')
+cm
+```
+
+```{r}
+ROCpred = prediction(pred, testing_data$accident_severity)
+ROCperf <- performance(ROCpred, "tpr", "fpr")
+plot(ROCperf, colorize=TRUE)
+abline(a=0, b=1)
+auc_train <- round(as.numeric(performance(ROCpred, "auc")@y.values),2)
+legend(.8, .2, auc_train, title = "AUC", cex=1)
+
+```
+
+**2. Decision Tree**<br>
+A supervised machine learning model that works as flow chat that used to visualize the decision-making process by mapping out different courses of action, as well as their potential outcomes.<br>
+
+We first build the decision tree with all the feature. However, fitting all the features into the model is always not the best choice. From the summary of the model, we obtain the result of CP, which stands for **Complexity Parameter**. It refers to the trade-off between the size of a tree and the error rate that help to prevent overfitting. So we want the cp value of the smallest tree that is having the smallest cross validation error.
+
+```{r} 
+Dtree = rpart(accident_severity ~ ., data = training_data, method = "poisson")
+printcp(Dtree)
+# Plot Full Tree
+prp(Dtree, type = 1, extra = 1, under = TRUE, split.font = 2, varlen = 0) 
+```
+
+
+Find the best pruned Decision Tree by selecting the tree that is having least cross validation error.
+```{r}
+set.seed(12345)
+cv.ct <- rpart(accident_severity ~., data = training_data, method = "poisson", 
+               cp = 0.00001, minsplit = 5, xval = 5)
+printcp(cv.ct)
+prp(cv.ct, type = 1, extra = 1, under = TRUE, split.font = 2, varlen = 0) 
+```
+
+From the result above, the CP with value of 2.7933e-03 is having the least cross validation error.
+``` {r}
+# Prune by lowest cp
+prune_dt <- prune(cv.ct,cp=cv.ct$cptable[which.min(cv.ct$cptable[,"xerror"]),"CP"])
+predict_dt <- predict(prune_dt, testing_data)
+cutoff <- ifelse(predict_dt>0.04, 1,0)
+
+length(prune_dt$frame$var[prune_dt$frame$var == "<leaf>"])
+prp(prune_dt, type = 1, extra = 1, split.font = 1, varlen = -10)
+cm_dt <- confusionMatrix(as.factor(testing_data$accident_severity),as.factor(cutoff),positive='1')
+cm_dt
+```
+
+**Decision Tree Result**<br>
+The model has achieved **97.4%** of accuracy, **11%** of sensitivity and **99%** of specificity. The Area Under Curve for this model achieves **79%** slightly lower compared to logistic regression.
+```{r}
+pred_dt <- predict(prune_dt, newdata= testing_data,type = "matrix")[, 2]
+Pred_val = prediction(pred_dt, testing_data$accident_severity) 
+plot(performance(Pred_val, "tpr", "fpr"),colorize=TRUE)
+abline(0, 1, lty = 2)
+auc_train <- round(as.numeric(performance(Pred_val, "auc")@y.values),2)
+legend(.8, .2, auc_train, title = "AUC", cex=1)
+```
+
+
+```{r}
+#Handling imbalanced dataset
+library(ROSE)
+table(training_data$accident_severity)
+table(testing_data$accident_severity)
+
+#Oversampling 
+over <- ovun.sample(accident_severity~.,data = training_data, method="over",N=142930)$data
+table(over$accident_severity)
+
+LR_model_over = glm(accident_severity ~ .-date-special_conditions_at_site-day_of_week -first_road_number - second_road_number - carriageway_hazards , data = over, family = "binomial")
+
+# Performance of oversampling model on testing data set
+pred <- predict(LR_model_over,testing_data,type="response")
+cutoff_val <- ifelse(pred>0.071, 1,0)
+cm <- confusionMatrix(as.factor(testing_data$accident_severity),as.factor(cutoff_val),positive ='1')
+cm
+```
+
+```{r}
+#undersampling
+under <- ovun.sample(accident_severity~.,data = training_data, method="under",N=2200)$data
+table(under$accident_severity)
+
+LR_model_under = glm(accident_severity ~ .-date-special_conditions_at_site-day_of_week -first_road_number - second_road_number - carriageway_hazards , data = under, family = "binomial")
+vif(LR_model)
+
+# Performance of undersampling model on testing data set
+pred <- predict(LR_model_under,testing_data,type="response")
+cutoff_val <- ifelse(pred>0.071, 1,0)
+cm <- confusionMatrix(as.factor(testing_data$accident_severity),as.factor(cutoff_val),positive ='1')
+cm
+
+
+
+```
+For oversampling & undersampling model, both have achieved *5.7%* of accuracy, *1.64%* of sensitivity and *99.8%* of specificity. The balanced accuracy achieves *50.7%* which is even worse than LR results.
